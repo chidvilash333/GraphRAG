@@ -1,0 +1,20 @@
+# Single source of configuration. Secrets live in .env, never here.
+llm:
+  base_url: "https://api.groq.com/openai/v1"
+  extraction_model: "openai/gpt-oss-120b"   # heavy reasoning: triple extraction
+  light_model: "openai/gpt-oss-20b"         # lighter calls (query entities, etc.)
+  temperature: 0.0
+  # gpt-oss emits hidden reasoning tokens that count against this budget.
+  # 2048 leaves headroom over a ~15-triple JSON answer (~600 tokens).
+  max_completion_tokens: 2048
+  reasoning_effort: "low"                   # low | medium | high | null
+  timeout_s: 60
+  max_retries: 3                            # SDK retries 429/5xx with backoff
+  api_key_env: "GROQ_API_KEY"
+
+extraction:
+  max_triples_per_chunk: 15
+  max_chunk_chars: 4000                     # safety cap; Phase 2 chunks will be smaller
+  max_entity_chars: 80
+  max_relation_chars: 40
+  require_grounded_entities: true           # drop triples whose entities aren't in the chunk
