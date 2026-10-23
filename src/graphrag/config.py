@@ -30,8 +30,11 @@ class LLMConfig:
     timeout_s: float = 60.0
     max_retries: int = 3
     api_key_env: str = "GROQ_API_KEY"
+    requests_per_minute: int = 20
 
     def __post_init__(self) -> None:
+        if self.requests_per_minute <= 0:
+            raise ConfigError("llm.requests_per_minute must be > 0")
         if not 0.0 <= self.temperature <= 2.0:
             raise ConfigError("llm.temperature must be in [0, 2]")
         if self.max_completion_tokens <= 0:
@@ -60,9 +63,48 @@ class ExtractionConfig:
 
 
 @dataclass(frozen=True)
+class PathsConfig:
+    docs_dir: str = "data/docs"
+    index_dir: str = "data/index"
+    graph_path: str = "data/graph/graph.json"
+    cache_path: str = "data/cache/extractions.json"
+
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    batch_size: int = 32
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ConfigError("embedding.batch_size must be > 0")
+
+
+@dataclass(frozen=True)
+class ChunkingConfig:
+    max_tokens: int = 200
+    overlap_tokens: int = 40
+
+    def __post_init__(self) -> None:
+        if self.max_tokens <= 0:
+            raise ConfigError("chunking.max_tokens must be > 0")
+        if not 0 <= self.overlap_tokens < self.max_tokens:
+            raise ConfigError("chunking.overlap_tokens must be in [0, max_tokens)")
+
+
+@dataclass(frozen=True)
+class VectorStoreConfig:
+    collection: str = "chunks"
+
+
+@dataclass(frozen=True)
 class AppConfig:
     llm: LLMConfig
     extraction: ExtractionConfig
+    paths: PathsConfig = PathsConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
+    chunking: ChunkingConfig = ChunkingConfig()
+    vector_store: VectorStoreConfig = VectorStoreConfig()
 
 
 def _build(cls: type, data: Any, section: str) -> Any:
@@ -84,9 +126,16 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ConfigError("Top level of config must be a mapping")
+    unknown = set(raw) - {f.name for f in fields(AppConfig)}
+    if unknown:
+        raise ConfigError(f"Unknown top-level sections: {sorted(unknown)}")
     if "llm" not in raw:
         raise ConfigError("Missing required section 'llm'")
     return AppConfig(
         llm=_build(LLMConfig, raw["llm"], "llm"),
         extraction=_build(ExtractionConfig, raw.get("extraction", {}), "extraction"),
+        paths=_build(PathsConfig, raw.get("paths", {}), "paths"),
+        embedding=_build(EmbeddingConfig, raw.get("embedding", {}), "embedding"),
+        chunking=_build(ChunkingConfig, raw.get("chunking", {}), "chunking"),
+        vector_store=_build(VectorStoreConfig, raw.get("vector_store", {}), "vector_store"),
     )

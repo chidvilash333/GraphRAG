@@ -7,7 +7,9 @@ Return ONLY a JSON object of the form:
 Rules:
 1. Extract only relationships explicitly stated in the text. Never use outside knowledge.
 2. subject and object are named entities (people, organizations, drugs, genes, proteins,
-   places, products, specific concepts), written exactly as they appear in the text.
+   places, products, specific concepts), copied from the text but reduced to the shortest
+   name that identifies them: drop descriptive words and roles (write "COX-1", not
+   "the enzyme COX-1"). Use the same name every time the same entity appears.
    Never use pronouns like "it" or "they"; use the full name the pronoun refers to.
 3. relation is a short lowercase verb phrase of 1-4 words, e.g. "inhibits", "founded",
    "is located in". Keep the direction correct: subject does relation to object.
@@ -15,7 +17,7 @@ Rules:
 5. Return at most __MAX__ triples. If there are none, return {"triples": []}.
 
 Example
-Text: "Aspirin inhibits COX-1. It was first synthesized by Bayer."
+Text: "Aspirin inhibits the enzyme COX-1. It was first synthesized by Bayer."
 Output: {"triples": [{"subject": "Aspirin", "relation": "inhibits", "object": "COX-1"},
 {"subject": "Bayer", "relation": "synthesized", "object": "Aspirin"}]}"""
 

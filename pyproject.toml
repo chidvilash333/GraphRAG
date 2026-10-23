@@ -1,6 +1,6 @@
 [project]
 name = "graphrag"
-version = "0.1.0"
+version = "0.2.0"
 description = "GraphRAG: knowledge-graph + vector retrieval for multi-hop questions"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,6 +8,9 @@ dependencies = [
     "openai>=1.40",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
+    "networkx>=3.2",
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
 ]
 
 [dependency-groups]

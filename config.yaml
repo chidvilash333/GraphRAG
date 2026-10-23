@@ -11,6 +11,7 @@ llm:
   timeout_s: 60
   max_retries: 3                            # SDK retries 429/5xx with backoff
   api_key_env: "GROQ_API_KEY"
+  requests_per_minute: 20                   # client-side throttle for the free tier
 
 extraction:
   max_triples_per_chunk: 15
@@ -18,3 +19,22 @@ extraction:
   max_entity_chars: 80
   max_relation_chars: 40
   require_grounded_entities: true           # drop triples whose entities aren't in the chunk
+
+paths:
+  docs_dir: "data/docs"
+  index_dir: "data/index"                   # ChromaDB persistence
+  graph_path: "data/graph/graph.json"
+  cache_path: "data/cache/extractions.json" # LLM extraction cache (saves quota on re-ingest)
+
+embedding:
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  batch_size: 32
+
+chunking:
+  # Counted with the embedding model's own tokenizer. MiniLM truncates input at
+  # 256 word-pieces, so chunks must stay under that or their tails are never embedded.
+  max_tokens: 200
+  overlap_tokens: 40
+
+vector_store:
+  collection: "chunks"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 from graphrag.config import ExtractionConfig, LLMConfig
@@ -18,6 +19,13 @@ class TripleExtractor:
         self._model = llm_cfg.extraction_model
         self._cfg = cfg
         self._system = build_system_prompt(cfg.max_triples_per_chunk)
+
+    @property
+    def fingerprint(self) -> str:
+        """Identifies everything that affects output. Changing the model, prompt, or
+        validation settings changes this, which invalidates cached extractions."""
+        material = "\n".join([self._model, self._system, repr(self._cfg)])
+        return hashlib.sha256(material.encode()).hexdigest()[:16]
 
     def extract(self, text: str) -> ParseResult:
         text = text.strip()
