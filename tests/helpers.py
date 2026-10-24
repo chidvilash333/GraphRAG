@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import re
+import zlib
 
 _WORD = re.compile(r"\S+")
 
@@ -60,6 +62,24 @@ class FakeEmbedder:
         return [[float(len(t)), 1.0] for t in texts]
 
 
+class KeywordEmbedder:
+    """Deterministic bag-of-words embedding (crc32-hashed buckets), unit-normalized.
+    Texts sharing words are similar, which is all the retrieval tests need."""
+
+    max_tokens = 256
+    dims = 4096
+
+    def embed(self, texts):
+        out = []
+        for t in texts:
+            v = [0.0] * self.dims
+            for w in re.findall(r"[a-z0-9-]+", t.lower()):
+                v[zlib.crc32(w.encode()) % self.dims] += 1.0
+            norm = math.sqrt(sum(x * x for x in v)) or 1.0
+            out.append([x / norm for x in v])
+        return out
+
+
 class InMemoryVectorStore:
     def __init__(self):
         self.rows = {}
@@ -75,3 +95,17 @@ class InMemoryVectorStore:
 
     def count(self):
         return len(self.rows)
+
+    def query(self, embedding, k):
+        def dist(row):
+            return sum((a - b) ** 2 for a, b in zip(embedding, row["embedding"], strict=True))
+
+        ranked = sorted(self.rows.items(), key=lambda kv: (dist(kv[1]), kv[0]))
+        return [(cid, dist(row), row["document"]) for cid, row in ranked[:k]]
+
+    def get(self, ids):
+        return {
+            cid: (self.rows[cid]["document"], self.rows[cid]["embedding"])
+            for cid in ids
+            if cid in self.rows
+        }

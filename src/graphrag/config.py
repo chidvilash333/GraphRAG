@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 _REASONING_EFFORTS = {None, "low", "medium", "high"}
+_ENTITY_MODES = {"lexical", "llm", "both"}
 
 
 class ConfigError(ValueError):
@@ -98,6 +99,37 @@ class VectorStoreConfig:
 
 
 @dataclass(frozen=True)
+class RetrievalConfig:
+    vector_k: int = 3
+    max_hops: int = 2
+    max_neighbors_per_node: int = 8
+    max_graph_chunks: int = 8
+    final_k: int = 4
+    rrf_k: int = 60
+    entity_mode: str = "both"
+    entity_match_threshold: float = 0.75
+    min_lexical_chars: int = 3
+
+    def __post_init__(self) -> None:
+        for name in (
+            "vector_k",
+            "max_neighbors_per_node",
+            "max_graph_chunks",
+            "final_k",
+            "rrf_k",
+            "min_lexical_chars",
+        ):
+            if getattr(self, name) <= 0:
+                raise ConfigError(f"retrieval.{name} must be > 0")
+        if not 1 <= self.max_hops <= 3:
+            raise ConfigError("retrieval.max_hops must be in [1, 3]")
+        if self.entity_mode not in _ENTITY_MODES:
+            raise ConfigError(f"retrieval.entity_mode must be one of {sorted(_ENTITY_MODES)}")
+        if not 0.0 < self.entity_match_threshold <= 1.0:
+            raise ConfigError("retrieval.entity_match_threshold must be in (0, 1]")
+
+
+@dataclass(frozen=True)
 class AppConfig:
     llm: LLMConfig
     extraction: ExtractionConfig
@@ -105,6 +137,7 @@ class AppConfig:
     embedding: EmbeddingConfig = EmbeddingConfig()
     chunking: ChunkingConfig = ChunkingConfig()
     vector_store: VectorStoreConfig = VectorStoreConfig()
+    retrieval: RetrievalConfig = RetrievalConfig()
 
 
 def _build(cls: type, data: Any, section: str) -> Any:
@@ -138,4 +171,5 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         embedding=_build(EmbeddingConfig, raw.get("embedding", {}), "embedding"),
         chunking=_build(ChunkingConfig, raw.get("chunking", {}), "chunking"),
         vector_store=_build(VectorStoreConfig, raw.get("vector_store", {}), "vector_store"),
+        retrieval=_build(RetrievalConfig, raw.get("retrieval", {}), "retrieval"),
     )

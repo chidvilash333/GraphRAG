@@ -38,3 +38,16 @@ chunking:
 
 vector_store:
   collection: "chunks"
+
+
+
+retrieval:
+  vector_k: 3                    # chunks from vector search inside hybrid retrieval
+  max_hops: 2                    # graph traversal depth (capped at 3 in config validation)
+  max_neighbors_per_node: 8      # per-node expansion cap: stops hub nodes exploding
+  max_graph_chunks: 8            # graph candidates passed to fusion
+  final_k: 4                     # context budget; vector-only baseline gets the same budget
+  rrf_k: 60                      # Reciprocal Rank Fusion constant (standard value)
+  entity_mode: "both"            # lexical | llm | both: how question entities are found
+  entity_match_threshold: 0.75   # min cosine for embedding fallback matching
+  min_lexical_chars: 3           # skip very short node names in lexical matching  

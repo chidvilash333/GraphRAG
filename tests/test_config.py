@@ -14,6 +14,17 @@ def test_repo_config_loads():
     assert cfg.extraction.require_grounded_entities is True
     assert cfg.chunking.max_tokens == 200
     assert cfg.embedding.model == "sentence-transformers/all-MiniLM-L6-v2"
+    assert cfg.retrieval.max_hops == 2
+    assert cfg.retrieval.entity_mode == "both"
+
+
+def test_bad_retrieval_values_rejected(tmp_path):
+    p = tmp_path / "c.yaml"
+    base = "llm:\n  base_url: x\n  extraction_model: a\n  light_model: b\n"
+    for bad in ("max_hops: 5", "entity_mode: fuzzy", "entity_match_threshold: 0"):
+        p.write_text(base + "retrieval:\n  " + bad + "\n")
+        with pytest.raises(ConfigError):
+            load_config(p)
 
 
 def test_unknown_section_rejected(tmp_path):
