@@ -16,6 +16,7 @@ def test_repo_config_loads():
     assert cfg.embedding.model == "sentence-transformers/all-MiniLM-L6-v2"
     assert cfg.retrieval.max_hops == 2
     assert cfg.retrieval.entity_mode == "both"
+    assert cfg.generation.model_role == "heavy"
 
 
 def test_bad_retrieval_values_rejected(tmp_path):

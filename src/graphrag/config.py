@@ -14,6 +14,7 @@ import yaml
 
 _REASONING_EFFORTS = {None, "low", "medium", "high"}
 _ENTITY_MODES = {"lexical", "llm", "both"}
+_MODEL_ROLES = {"heavy", "light"}
 
 
 class ConfigError(ValueError):
@@ -130,6 +131,18 @@ class RetrievalConfig:
 
 
 @dataclass(frozen=True)
+class GenerationConfig:
+    model_role: str = "heavy"  # heavy -> llm.extraction_model, light -> llm.light_model
+    max_context_chars: int = 6000
+
+    def __post_init__(self) -> None:
+        if self.model_role not in _MODEL_ROLES:
+            raise ConfigError(f"generation.model_role must be one of {sorted(_MODEL_ROLES)}")
+        if self.max_context_chars <= 0:
+            raise ConfigError("generation.max_context_chars must be > 0")
+
+
+@dataclass(frozen=True)
 class AppConfig:
     llm: LLMConfig
     extraction: ExtractionConfig
@@ -138,6 +151,7 @@ class AppConfig:
     chunking: ChunkingConfig = ChunkingConfig()
     vector_store: VectorStoreConfig = VectorStoreConfig()
     retrieval: RetrievalConfig = RetrievalConfig()
+    generation: GenerationConfig = GenerationConfig()
 
 
 def _build(cls: type, data: Any, section: str) -> Any:
@@ -172,4 +186,5 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         chunking=_build(ChunkingConfig, raw.get("chunking", {}), "chunking"),
         vector_store=_build(VectorStoreConfig, raw.get("vector_store", {}), "vector_store"),
         retrieval=_build(RetrievalConfig, raw.get("retrieval", {}), "retrieval"),
+        generation=_build(GenerationConfig, raw.get("generation", {}), "generation"),
     )

@@ -39,8 +39,6 @@ chunking:
 vector_store:
   collection: "chunks"
 
-
-
 retrieval:
   vector_k: 3                    # chunks from vector search inside hybrid retrieval
   max_hops: 2                    # graph traversal depth (capped at 3 in config validation)
@@ -50,4 +48,8 @@ retrieval:
   rrf_k: 60                      # Reciprocal Rank Fusion constant (standard value)
   entity_mode: "both"            # lexical | llm | both: how question entities are found
   entity_match_threshold: 0.75   # min cosine for embedding fallback matching
-  min_lexical_chars: 3           # skip very short node names in lexical matching  
+  min_lexical_chars: 3           # skip very short node names in lexical matching
+
+generation:
+  model_role: "heavy"            # heavy = llm.extraction_model (multi-hop synthesis), light = llm.light_model
+  max_context_chars: 6000        # whole chunks are dropped from the tail past this; never cut mid-chunk
