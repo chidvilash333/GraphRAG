@@ -46,3 +46,15 @@ def test_neighbor_cap_prefers_supported_then_low_degree():
 def test_unknown_seeds_and_no_seeds():
     assert traverse(_kg(), ["nope"], max_hops=2, max_neighbors=8) == []
     assert traverse(_kg(), [], max_hops=2, max_neighbors=8) == []
+
+
+def test_all_shortest_paths_kept_per_chunk():
+    kg = KnowledgeGraph()
+    kg.add_triples([T("Zoraxin", "developed by", "Halvern")], "zoraxin:000")
+    kg.add_triples(
+        [T("Halvern", "focuses on", "drugs"), T("Halvern", "headquartered in", "Brevik")],
+        "halvern:000",
+    )
+    hits = {h.chunk_id: h for h in traverse(kg, ["zoraxin"], max_hops=2, max_neighbors=8)}
+    last_edges = {p[-1] for p in hits["halvern:000"].paths}
+    assert last_edges == {"Halvern -[focuses on]-> drugs", "Halvern -[headquartered in]-> Brevik"}

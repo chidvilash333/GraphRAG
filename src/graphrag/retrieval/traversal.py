@@ -18,12 +18,21 @@ from dataclasses import dataclass
 
 from graphrag.graph import KnowledgeGraph
 
+MAX_PATHS_PER_HIT = 4
+
 
 @dataclass(frozen=True)
 class GraphHit:
     chunk_id: str
     hop: int  # 1 = an edge touching a seed entity
-    path: tuple[str, ...]  # human-readable edges from a seed to the edge that found it
+    # Every shortest path (up to MAX_PATHS_PER_HIT) that reached this chunk. A chunk is
+    # often reached by several edges; keeping them all lets the reranker see, e.g., the
+    # "headquartered in" edge and not just whichever edge sorted first.
+    paths: tuple[tuple[str, ...], ...]
+
+    @property
+    def path(self) -> tuple[str, ...]:
+        return self.paths[0]
 
 
 def _ranked_neighbors(
@@ -51,16 +60,25 @@ def traverse(
     frontier = sorted({s for s in seeds if s in kg.g})
     path_to: dict[str, tuple[str, ...]] = {s: () for s in frontier}
     visited = set(frontier)
-    hits: dict[str, GraphHit] = {}
+    found: dict[str, tuple[int, list[tuple[str, ...]]]] = {}
 
     for depth in range(1, max_hops + 1):
         next_frontier: list[str] = []
         for node in frontier:
             for nb, edges in _ranked_neighbors(kg, node, max_neighbors):
                 for edge_str, chunk_ids in edges:
+                    path = path_to[node] + (edge_str,)
                     for cid in sorted(chunk_ids):
-                        # BFS order means the first time we see a chunk is its shortest hop.
-                        hits.setdefault(cid, GraphHit(cid, depth, path_to[node] + (edge_str,)))
+                        # BFS order: the first depth we see a chunk at is its shortest hop.
+                        if cid not in found:
+                            found[cid] = (depth, [path])
+                        elif (
+                            found[cid][0] == depth
+                            and path not in found[cid][1]
+                            and len(found[cid][1]) < MAX_PATHS_PER_HIT
+                        ):
+                            found[cid][1].append(path)
+                            found[cid][1].append(path)
                 if nb not in visited:
                     visited.add(nb)
                     path_to[nb] = path_to[node] + (edges[0][0],)
@@ -68,4 +86,4 @@ def traverse(
         frontier = next_frontier
         if not frontier:
             break
-    return list(hits.values())
+    return [GraphHit(cid, hop, tuple(paths)) for cid, (hop, paths) in found.items()]

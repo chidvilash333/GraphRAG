@@ -17,6 +17,8 @@ def test_repo_config_loads():
     assert cfg.retrieval.max_hops == 2
     assert cfg.retrieval.entity_mode == "both"
     assert cfg.generation.model_role == "heavy"
+    assert cfg.retrieval.path_rerank is True
+    assert cfg.evaluation.recall_at_k == (2, 3, 4, 5, 6)
 
 
 def test_bad_retrieval_values_rejected(tmp_path):

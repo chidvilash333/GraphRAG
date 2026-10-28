@@ -13,7 +13,8 @@ from graphrag.embedding import Embedder
 from graphrag.graph import KnowledgeGraph
 from graphrag.retrieval.entities import QueryEntityFinder, SeedMatch
 from graphrag.retrieval.fusion import rrf
-from graphrag.retrieval.traversal import GraphHit, traverse
+from graphrag.retrieval.rerank import PathReranker
+from graphrag.retrieval.traversal import traverse
 from graphrag.vector_store import VectorStore
 
 
@@ -54,22 +55,27 @@ class Retriever:
         store: VectorStore,
         kg: KnowledgeGraph,
         entity_finder: QueryEntityFinder,
+        reranker: PathReranker | None = None,
     ) -> None:
         self._cfg, self._embedder, self._store = cfg, embedder, store
-        self._kg, self._finder = kg, entity_finder
+        self._kg, self._finder, self._reranker = kg, entity_finder, reranker
+        # Graph-side work (entity LLM call, traversal, rerank LLM call) depends only on
+        # the question, so it is memoized: evaluating several budgets costs no extra calls.
+        self._graph_memo: dict[str, tuple] = {}
 
-    def vector_only(self, question: str) -> RetrievalResult:
+    def vector_only(self, question: str, final_k: int | None = None) -> RetrievalResult:
         """Plain RAG baseline: top final_k by embedding similarity."""
         q = self._embedder.embed([question])[0]
-        hits = self._store.query(q, self._cfg.final_k)
+        hits = self._store.query(q, final_k or self._cfg.final_k)
         chunks = [
             RetrievedChunk(cid, text, score=-dist, vector_rank=i)
             for i, (cid, dist, text) in enumerate(hits, 1)
         ]
         return RetrievalResult(question, chunks)
 
-    def hybrid(self, question: str) -> RetrievalResult:
+    def hybrid(self, question: str, final_k: int | None = None) -> RetrievalResult:
         cfg = self._cfg
+        final_k = final_k or cfg.final_k
         q = self._embedder.embed([question])[0]
 
         # (a) vector candidates
@@ -79,15 +85,11 @@ class Retriever:
         # Unit vectors: squared L2 distance d = 2 - 2cos, so cos = 1 - d/2.
         sims = {cid: 1.0 - dist / 2.0 for cid, dist, _ in vec_hits}
 
-        # (b) graph candidates: seed entities -> bounded traversal -> chunk IDs
-        seeds = self._finder.find(question)
-        graph_hits = traverse(
-            self._kg,
-            [s.node for s in seeds],
-            max_hops=cfg.max_hops,
-            max_neighbors=cfg.max_neighbors_per_node,
-        )
-        graph_hits, texts, graph_sims = self._rank_graph_hits(graph_hits, q, texts)
+        # (b) graph candidates: seeds -> bounded traversal -> ranked chunk IDs (memoized)
+        if question not in self._graph_memo:
+            self._graph_memo[question] = self._graph_side(question, q)
+        seeds, graph_hits, graph_texts, graph_sims = self._graph_memo[question]
+        texts = {**texts, **graph_texts}
         sims.update(graph_sims)
         graph_ranking = [h.chunk_id for h in graph_hits]
         by_id = {h.chunk_id: h for h in graph_hits}
@@ -101,7 +103,7 @@ class Retriever:
         # to the question: a neutral rule that doesn't favour either retriever.
         ordered = sorted(scores, key=lambda cid: (-scores[cid], -sims.get(cid, 0.0), cid))
         chunks = []
-        for cid in ordered[: cfg.final_k]:
+        for cid in ordered[:final_k]:
             hit = by_id.get(cid)
             chunks.append(
                 RetrievedChunk(
@@ -116,20 +118,25 @@ class Retriever:
             )
         return RetrievalResult(question, chunks, seeds)
 
-    def _rank_graph_hits(
-        self, hits: list[GraphHit], q: list[float], texts: dict[str, str]
-    ) -> tuple[list[GraphHit], dict[str, str], dict[str, float]]:
-        """Order graph candidates by hop, then by similarity to the question.
-
-        The graph supplies recall (chunks vector search can't reach); similarity only
-        orders candidates within the same hop distance.
-        """
+    def _graph_side(self, question: str, q: list[float]) -> tuple:
+        cfg = self._cfg
+        seeds = self._finder.find(question)
+        hits = traverse(
+            self._kg,
+            [s.node for s in seeds],
+            max_hops=cfg.max_hops,
+            max_neighbors=cfg.max_neighbors_per_node,
+        )
         stored = self._store.get([h.chunk_id for h in hits])
-        texts = {**texts, **{cid: t for cid, (t, _) in stored.items()}}
+        texts = {cid: t for cid, (t, _) in stored.items()}
         sim = {cid: _dot(q, emb) for cid, (_, emb) in stored.items()}
         live = [h for h in hits if h.chunk_id in stored]  # skip IDs missing from the index
+        # Base order: hop distance, then similarity to the question.
         live.sort(key=lambda h: (h.hop, -sim[h.chunk_id], h.chunk_id))
-        return live[: self._cfg.max_graph_chunks], texts, sim
+        if self._reranker is not None and cfg.path_rerank:
+            head = self._reranker.rerank(question, live[: cfg.rerank_candidates])
+            live = head + live[cfg.rerank_candidates :]
+        return seeds, live[: cfg.max_graph_chunks], texts, sim
 
 
 def build_default_retriever(cfg: AppConfig) -> Retriever:
@@ -155,4 +162,14 @@ def build_default_retriever(cfg: AppConfig) -> Retriever:
         min_lexical_chars=cfg.retrieval.min_lexical_chars,
     )
     store = ChromaVectorStore(cfg.paths.index_dir, cfg.vector_store.collection)
-    return Retriever(cfg.retrieval, embedder=embedder, store=store, kg=kg, entity_finder=finder)
+    reranker = None
+    if cfg.retrieval.path_rerank:
+        reranker = PathReranker(client or GroqChatClient(cfg.llm), cfg.llm.light_model)
+    return Retriever(
+        cfg.retrieval,
+        embedder=embedder,
+        store=store,
+        kg=kg,
+        entity_finder=finder,
+        reranker=reranker,
+    )

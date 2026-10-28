@@ -1,0 +1,54 @@
+# Evaluation set. The corpus is fictional, so a correct answer must come from retrieval.
+#   type:          multi_hop | single_hop | unanswerable
+#   expected_any:  the answer is correct if it contains ANY of these (case-insensitive)
+#   required_docs: documents whose facts are needed; retrieval recall is measured on these
+#   note:          why the question is hard for vector-only retrieval
+
+- id: q1
+  type: multi_hop
+  question: "Which drug could raise Zoraxin levels?"
+  expected_any: ["Tremidol"]
+  required_docs: [zoraxin, tremidol]
+  note: "tremidol.md never mentions Zoraxin; the link is the shared enzyme Velkase-3. fendrel.md and drug-levels.md talk about rising levels."
+
+- id: q2
+  type: multi_hop
+  question: "In which city is the company that developed Zoraxin headquartered?"
+  expected_any: ["Brevik"]
+  required_docs: [zoraxin, halvern-therapeutics]
+  note: "corvane-pharma.md is a company-and-headquarters distractor that also mentions Brevik."
+
+- id: q3
+  type: multi_hop
+  question: "Which research institute discovered the enzyme that clears Zoraxin?"
+  expected_any: ["Ostrand Labs", "Ostrand"]
+  required_docs: [zoraxin, ostrand-labs]
+  note: "velkase-1.md (an enzyme discovered at an institute) is a near-identical distractor."
+
+- id: q4
+  type: multi_hop
+  question: "In which city is the research institute where Halvern Therapeutics' chief scientist previously worked?"
+  expected_any: ["Kaldmark"]
+  required_docs: [halvern-therapeutics, ostrand-labs]
+  note: "marrow-institute.md is a research-institute-in-a-city distractor."
+
+- id: q5
+  type: multi_hop
+  question: "Who discovered the enzyme that the antifungal Tremidol inhibits?"
+  expected_any: ["Ostrand Labs", "Ostrand"]
+  required_docs: [tremidol, ostrand-labs]
+  note: "velkase-1.md and marrow-institute.md are discovery distractors."
+
+- id: q6
+  type: single_hop
+  question: "What does Tremidol treat?"
+  expected_any: ["yeast"]
+  required_docs: [tremidol]
+  note: "Control: one document answers it. Both systems should succeed."
+
+- id: q7
+  type: unanswerable
+  question: "What is the recommended dose of Zoraxin for children?"
+  expected_any: []
+  required_docs: []
+  note: "Control: no document covers this. Correct behaviour is INSUFFICIENT_EVIDENCE."

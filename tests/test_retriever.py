@@ -1,9 +1,12 @@
+import json
+
 from graphrag.config import RetrievalConfig
 from graphrag.extraction.parse import Triple
 from graphrag.graph import KnowledgeGraph
 from graphrag.retrieval.entities import QueryEntityFinder
+from graphrag.retrieval.rerank import PathReranker
 from graphrag.retrieval.retriever import Retriever
-from helpers import InMemoryVectorStore, KeywordEmbedder
+from helpers import FakeClient, InMemoryVectorStore, KeywordEmbedder
 
 CHUNKS = {
     "zoraxin:000": "Zoraxin is an anticoagulant. Zoraxin is cleared by Velkase-3.",
@@ -68,3 +71,32 @@ def test_no_seeds_falls_back_to_vector_ranking():
     assert res.seeds == []
     assert res.chunks[0].chunk_id == "kaldmark:000"
     assert all(c.sources == "vector" for c in res.chunks)
+
+
+class CountingFinder:
+    def __init__(self, inner):
+        self.inner, self.calls = inner, 0
+
+    def find(self, question):
+        self.calls += 1
+        return self.inner.find(question)
+
+
+def test_graph_side_memoized_across_budgets():
+    r = _retriever()
+    counting = CountingFinder(r._finder)
+    r._finder = counting
+    sizes = [len(r.hybrid(QUESTION, final_k=k).chunks) for k in (1, 2, 3)]
+    assert sizes == [1, 2, 3]
+    assert counting.calls == 1  # entity lookup (an LLM call in production) happened once
+
+
+def test_reranker_order_is_used():
+    base = [c.chunk_id for c in _retriever(vector_k=1, final_k=2).hybrid(QUESTION).chunks]
+    assert "tremidol:000" not in base  # hop 2 loses the last slot without reranking
+
+    r = _retriever(vector_k=1, final_k=2)
+    # Base graph order: zoraxin (hop 1), tremidol (hop 2). The reranker puts tremidol first.
+    r._reranker = PathReranker(FakeClient(json.dumps({"ranking": [2, 1]})), "light")
+    ids = [c.chunk_id for c in r.hybrid(QUESTION).chunks]
+    assert "tremidol:000" in ids

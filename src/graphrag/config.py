@@ -110,6 +110,8 @@ class RetrievalConfig:
     entity_mode: str = "both"
     entity_match_threshold: float = 0.75
     min_lexical_chars: int = 3
+    path_rerank: bool = True
+    rerank_candidates: int = 10
 
     def __post_init__(self) -> None:
         for name in (
@@ -119,6 +121,7 @@ class RetrievalConfig:
             "final_k",
             "rrf_k",
             "min_lexical_chars",
+            "rerank_candidates",
         ):
             if getattr(self, name) <= 0:
                 raise ConfigError(f"retrieval.{name} must be > 0")
@@ -143,6 +146,19 @@ class GenerationConfig:
 
 
 @dataclass(frozen=True)
+class EvaluationConfig:
+    questions_path: str = "data/eval/questions.yaml"
+    results_path: str = "data/eval/results.json"
+    recall_at_k: tuple[int, ...] = (2, 3, 4, 5, 6)
+
+    def __post_init__(self) -> None:
+        ks = tuple(self.recall_at_k)
+        if not ks or any(not isinstance(k, int) or k <= 0 for k in ks):
+            raise ConfigError("evaluation.recall_at_k must be a non-empty list of positive ints")
+        object.__setattr__(self, "recall_at_k", ks)  # YAML gives a list; store a tuple
+
+
+@dataclass(frozen=True)
 class AppConfig:
     llm: LLMConfig
     extraction: ExtractionConfig
@@ -152,6 +168,7 @@ class AppConfig:
     vector_store: VectorStoreConfig = VectorStoreConfig()
     retrieval: RetrievalConfig = RetrievalConfig()
     generation: GenerationConfig = GenerationConfig()
+    evaluation: EvaluationConfig = EvaluationConfig()
 
 
 def _build(cls: type, data: Any, section: str) -> Any:
@@ -187,4 +204,5 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         vector_store=_build(VectorStoreConfig, raw.get("vector_store", {}), "vector_store"),
         retrieval=_build(RetrievalConfig, raw.get("retrieval", {}), "retrieval"),
         generation=_build(GenerationConfig, raw.get("generation", {}), "generation"),
+        evaluation=_build(EvaluationConfig, raw.get("evaluation", {}), "evaluation"),
     )
